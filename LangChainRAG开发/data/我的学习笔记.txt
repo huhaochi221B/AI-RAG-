@@ -1,0 +1,645 @@
+# LangChain 简介
+LangChain 由 Harrison Chase 创建于2022年10月，它是围绕LLMs（大语言模型）建立的一个框架。
+
+LangChain自身并不开发LLMs，它的核心理念是为各种LLMs实现通用的接口，把LLMs相关的组件“链接”在一起,
+简化LLMs应用的开发难度,方便开发者快速地开发复杂的LLMs应用。
+
+
+![image.png](https://p0-xtjj-private.juejin.cn/tos-cn-i-73owjymdk6/8a2e5c67dddc4940b9fc731f32842753~tplv-73owjymdk6-jj-mark-v1:0:0:0:0:5o6Y6YeR5oqA5pyv56S-5Yy6IEAg5reH5aWlNw==:q75.awebp?policy=eyJ2bSI6MywidWlkIjoiMzkyODk2ODU4MTM1MDU1NSJ9&rk3s=f64ab15b&x-orig-authkey=f32326d3454f2ac7e96d3d06cdbb035152127018&x-orig-expires=1780727190&x-orig-sign=GqUL%2Bye8wY2Nc6ksPiNlP%2BKb1mk%3D)
+
+**LangChain是后续学习RAG开发的主力框架**
+
+## 安装
+
+本质上是 Python 的 SDK （第三方包）
+
+一行命令：
+`pip install langchain langchain-community langchain-ollama dashscope chromadb`
+
+- langchain:核心包
+- langchain-community：社区支持包，提供了更多的第三方模型调用（我们用的阿里云干问模型就需要这个包）
+- langchain-ollama：0llama支持包，支持调用ollama托管部署的本地模型
+- dashscope：阿里云通义千问的Python SDK
+- chromadb：轻量向量数据库（后续使用）
+
+# RAG 介绍
+
+通用的基础大模型存在一些问题：
+- LLM的知识不是实时的，模型训练好后不具备自动更新知识的能力，会导致部分信息滞后
+- LLM领域知识是缺乏的，大模型的知识来源于训练数据，这些数据主要来自公开的互联网和开源数据集，无法覆盖特定领域或高度专业化的内部知识
+- 幻觉问题，LLM有时会在回答中生成看似合理但实际上是错误的信息
+- 数据安全性
+
+
+**RAG**（Retrieval-Augmented Generation）即**检索增强生成**，为大模型提供了从特定数据源检索到的信息，以此来修正和补充生成的答案。可以总结为一个公式：RAG = 检索技术 + LLM 提示。
+
+
+![image.png](https://p0-xtjj-private.juejin.cn/tos-cn-i-73owjymdk6/98d7397a33c64c2b8d9fff6d0b6849d5~tplv-73owjymdk6-jj-mark-v1:0:0:0:0:5o6Y6YeR5oqA5pyv56S-5Yy6IEAg5reH5aWlNw==:q75.awebp?policy=eyJ2bSI6MywidWlkIjoiMzkyODk2ODU4MTM1MDU1NSJ9&rk3s=f64ab15b&x-orig-authkey=f32326d3454f2ac7e96d3d06cdbb035152127018&x-orig-expires=1780727190&x-orig-sign=8ewV4G%2FjNEmKUZKh7hWoGFAfLPI%3D)
+
+## 向量的基础概念
+
+RAG流程中，向量库是一个重要的节点。
+- 离线流程：知识和信息→向量嵌入（向量化）→ 存入向量库
+- 在线流程：用户的提问→向量嵌入（向量化）→ 在向量库中匹配
+
+向量（Vector）就是文本的“数学身份证”：它把一段文字的**语义信息**，转换成一串固定长度的**数字列表**，让计算机能“看懂”文字的含义并做相似度计算。
+
+
+在向量匹配的过程中，如何识别2段文本是否表述相似的含义，主要可以通过如余弦相似度等算法来完成
+比如（下列案例中向量为示例，仅描述概念，非真实向量）：
+
+
+![image.png](https://p0-xtjj-private.juejin.cn/tos-cn-i-73owjymdk6/8a52045b5baa488fb3921e111b755057~tplv-73owjymdk6-jj-mark-v1:0:0:0:0:5o6Y6YeR5oqA5pyv56S-5Yy6IEAg5reH5aWlNw==:q75.awebp?policy=eyJ2bSI6MywidWlkIjoiMzkyODk2ODU4MTM1MDU1NSJ9&rk3s=f64ab15b&x-orig-authkey=f32326d3454f2ac7e96d3d06cdbb035152127018&x-orig-expires=1780727190&x-orig-sign=L7eLlQSCQdg5UDUJjvyPRSNq3cI%3D)
+
+如text-embedding-v1模型，可以生成1536维的向量（一段文本固定得到1536个数字序列），比较实用。
+1536个数字表示，这段文本在1536个主题（抽象的语义特征）方向上的得分（强度）。
+
+## 余弦相似度
+
+向量的数字序列，共同决定了向量在高维空间中的方向和长度.而余弦相似度主要就是撇除长度的影响，得到方向的夹角。夹角越小越相似，即方向相同。
+
+
+![image.png](https://p0-xtjj-private.juejin.cn/tos-cn-i-73owjymdk6/f23e03f7a8fd4b2783d20e96c8117248~tplv-73owjymdk6-jj-mark-v1:0:0:0:0:5o6Y6YeR5oqA5pyv56S-5Yy6IEAg5reH5aWlNw==:q75.awebp?policy=eyJ2bSI6MywidWlkIjoiMzkyODk2ODU4MTM1MDU1NSJ9&rk3s=f64ab15b&x-orig-authkey=f32326d3454f2ac7e96d3d06cdbb035152127018&x-orig-expires=1780727190&x-orig-sign=0fzeYP%2Brx%2FGMDNZBcfTvI4F80rY%3D)
+
+# LangChainRAG 组件
+
+LangChain目前支持三种类型的模型：LLMs（大语言模型）、Chat ModeLs（聊天模型)、Embeddings ModeLs(嵌入模型）。
+
+- LLMs:是技术范畴的统称，指基于大参数量、海量文本训练的 Transformer 架构模型，核心能力是理解和生成自然语言,主要服务于文本生成场景
+- 聊天模型：是应用范畴的细分，是专为对话场景优化的 LLMs，核心能力是模拟人类对话的轮次交互，主要服务于聊天场景
+- 文本嵌入模型：文本嵌入模型接收文本作为输入，得到文本的向量。
+
+
+LangChain支持的三类模型，它们的使用场景不同，输入和输出不同，开发者需要根据项目需要选择相应。
+
+## LangChain 访问大模型
+
+```Python
+from langchain_community.llms.tongyi import Tongyi
+
+model = Tongyi(model="qwen-max")
+
+# 调用invoke向模型提问
+
+res =model.invoke(input="你是谁？")
+print(res)
+```
+
+## 模型的流式输出
+```Python
+from langchain_community.llms.tongyi import Tongyi
+
+model = Tongyi(model="qwen-max")
+
+# 调用invoke向模型提问
+
+res =model.stream(input="你是谁？")
+
+for chunk in res:
+    print(chunk,end="", flush=True)
+```
+## LangChain 调用聊天模型
+
+```Python
+from langchain_community.chat_models.tongyi import ChatTongyi
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+
+model = ChatTongyi(model="qwen3-max", streaming=True)
+
+messages = [
+    SystemMessage(content="你是李白"),
+    HumanMessage(content="给我写一首唐诗"),
+    AIMessage(content="""
+    《月下独酌·其二》
+
+    金樽对月饮长空，
+    万里江天一色同。
+    醉踏青崖云作伴，
+    笑邀白鹿访仙翁。
+    星垂大野浮银汉，
+    浪卷千峰入玉虹。
+    莫问明朝何处去，
+    且将肝胆照苍穹！
+    """),
+    HumanMessage(content="就按你上一个回复的格式，输出诗句")
+]
+
+res = model.stream(input=messages)
+
+for chunk in res:
+    print(chunk.content, end="", flush=True)
+```
+
+## LangChain 的消息简写
+
+```Python
+from langchain_community.chat_models.tongyi import ChatTongyi
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+
+model = ChatTongyi(model="qwen3-max", streaming=True)
+
+messages = [
+    ("system", "你是李白"),
+    ("human", "给我写一首唐诗"),
+    ("ai", """
+    《月下独酌·其二》
+
+    金樽对月饮长空，
+    万里江天一色同。
+    醉踏青崖云作伴，
+    笑邀白鹿访仙翁。
+    星垂大野浮银汉，
+    浪卷千峰入玉虹。
+    莫问明朝何处去，
+    且将肝胆照苍穹！
+    """ ),
+    ("human", "就按你上一个回复的格式，输出诗句")
+]
+
+res = model.stream(input=messages)
+
+for chunk in res:
+    print(chunk.content, end="", flush=True)
+```
+
+
+![image.png](https://p0-xtjj-private.juejin.cn/tos-cn-i-73owjymdk6/80efd7a640c8490a9b15df6dd7a12246~tplv-73owjymdk6-jj-mark-v1:0:0:0:0:5o6Y6YeR5oqA5pyv56S-5Yy6IEAg5reH5aWlNw==:q75.awebp?policy=eyJ2bSI6MywidWlkIjoiMzkyODk2ODU4MTM1MDU1NSJ9&rk3s=f64ab15b&x-orig-authkey=f32326d3454f2ac7e96d3d06cdbb035152127018&x-orig-expires=1780727190&x-orig-sign=qG%2BW2aNxwSC2OjtUujVPSHe9Hx4%3D)
+
+## LangChain 调用嵌入模型
+
+Embeddings ModeLs嵌入模型的特点：将字符串作为输入，返回一个浮点数的列表（向量）。
+在NLP中，Embedding的作用就是将数据进行文本向量化
+
+```Python
+from langchain_community.embeddings import DashScopeEmbeddings
+
+model = DashScopeEmbeddings()
+
+print(model.embed_query("我喜欢你"))
+
+print(model.embed_documents(["我喜欢你", "我稀饭你", "晚上吃啥"]))
+```
+
+
+## LangChain 通用提示词模板
+
+```Python
+from langchain_core.prompts import PromptTemplate
+from langchain_community.llms.tongyi import Tongyi
+# zero-shot
+prompt_template = PromptTemplate.from_template(
+    "我的邻居姓{lastname}，刚生了{gender}，你帮我取个名字，简单回答"
+)
+model = Tongyi(model="qwen-max")
+# 调用format方法
+# prompt_text = prompt_template.format(lastname="胡",gender="男孩")
+# print(prompt_text)
+
+# res = model.invoke(input=prompt_text)
+# print(res)
+
+# 构建执行链条的方法
+
+chain = prompt_template | model
+
+res = chain.invoke(input={"lastname": "胡", "gender": "女儿"})
+print(res)
+```
+## FewShot 提示词模板
+
+```
+from langchain_community.llms.tongyi import Tongyi
+from langchain_core.prompts import FewShotPromptTemplate, PromptTemplate
+
+# 示例模板
+example_template = PromptTemplate.from_template("单词：{word}， 反义词：{antonym}")
+# 示例的数据
+example_data = [
+    {"word": "大", "antonym": "小"},
+    {"word": "高", "antonym": "低"}
+]
+
+
+few_shot_template = FewShotPromptTemplate(
+    example_prompt=example_template,   # 示例数据的模板
+    examples=example_data,         # 示例数据（动态注入），list内嵌字典
+    prefix="告诉我单词的反义词,我提供如下示例:",           # 示例之前的提示词
+    suffix="基于前面的示例告诉我:{input_word}的反义词是?",           # 示例之后的提示词
+    input_variables=['input_word']     # 声明在前缀或后缀中需要注入的变量名
+)
+
+prompt_text =  few_shot_template.invoke(input={"input_word": "左"}).to_string()
+
+print(prompt_text)
+
+model = Tongyi(model="qwen-max")
+print(model.invoke(input=prompt_text))
+```
+
+## 模板类的 format 和 invoke 方法
+
+
+![image.png](https://p0-xtjj-private.juejin.cn/tos-cn-i-73owjymdk6/30a7e761adef457c9855ff41ad29d178~tplv-73owjymdk6-jj-mark-v1:0:0:0:0:5o6Y6YeR5oqA5pyv56S-5Yy6IEAg5reH5aWlNw==:q75.awebp?policy=eyJ2bSI6MywidWlkIjoiMzkyODk2ODU4MTM1MDU1NSJ9&rk3s=f64ab15b&x-orig-authkey=f32326d3454f2ac7e96d3d06cdbb035152127018&x-orig-expires=1780727190&x-orig-sign=8hiVJVlwPVW%2ByC7f%2FKN0qve%2FzEw%3D)
+
+```Python
+from langchain_core.prompts import PromptTemplate
+
+template = PromptTemplate.from_template("我的邻居是:{name}, 最喜欢:{hobby}")
+
+res = template.format(name="狗蛋", hobby="看电影")
+print(res,type(res))
+
+res = template.invoke({"name": "乔奕磊", "hobby": "旅游"})
+print(res,type(res))
+```
+
+输出
+```
+我的邻居是:狗蛋, 最喜欢:看电影 <class 'str'>
+text='我的邻居是:乔奕磊, 最喜欢:旅游' <class 'langchain_core.prompt_values.StringPromptValue'>
+```
+
+## ChatPromptTemplate 的使用
+
+PromptTemplate：通用提示词模板，支持动态注入信息。
+FewShotPromptTempLate：支持基于模板注入任意数量的示例信息。
+ChatPromptTemplate：支持注入任意数量的历史会话信息。
+
+```Python
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_deepseek import ChatDeepSeek
+
+chat_prompt_template = ChatPromptTemplate.from_messages(
+    [
+        ("system","你是一个边塞诗人,可以作诗"),
+        MessagesPlaceholder("history"),
+        ("human","请再来一首唐诗")
+    ]
+)
+
+history_data = [
+    ("human","你来写一首唐诗"),
+    ("system", "床前明月光,疑是地上霜.举头望明月,低头思故乡.")
+]
+
+#StringPrompt Value
+prompt_text = chat_prompt_template.invoke({"history": history_data}).to_string()
+print(prompt_text)
+
+model = ChatDeepSeek(model="deepseek-v4-flash")
+res = model.invoke(prompt_text)
+print(res.content)
+```
+
+## chain 的基础使用
+
+「将组件串联，上一个组件的输出作为下一个组件的输入！是LangChain链（尤其是丨管道链）的核心工作
+原理，这也是链式调用的核心价值：实现数据的自动化流转与组件的协同工作，如下。
+
+chain = prompt_template l model
+核心前提：即Runnable子类对象才能入链（以及callable、Mapping接口子类对象也可加入（后续了解用的不多））。
+
+我们目前所学习到的组件，均是Runnable接口的子类，如下类的继承关系：
+
+
+![image.png](https://p0-xtjj-private.juejin.cn/tos-cn-i-73owjymdk6/2c249de3e4924c21b99412531c3481c3~tplv-73owjymdk6-jj-mark-v1:0:0:0:0:5o6Y6YeR5oqA5pyv56S-5Yy6IEAg5reH5aWlNw==:q75.awebp?policy=eyJ2bSI6MywidWlkIjoiMzkyODk2ODU4MTM1MDU1NSJ9&rk3s=f64ab15b&x-orig-authkey=f32326d3454f2ac7e96d3d06cdbb035152127018&x-orig-expires=1780727190&x-orig-sign=q%2FCUYJNR9un7HaP2rm%2Bh4wFgKg4%3D)
+
+组成的链在执行上有：上一个组件的输出作为下一个组件的输入的特性。
+
+所以有如下执行流程:
+
+![image.png](https://p0-xtjj-private.juejin.cn/tos-cn-i-73owjymdk6/3b223ff262844884be002cf1a00d1076~tplv-73owjymdk6-jj-mark-v1:0:0:0:0:5o6Y6YeR5oqA5pyv56S-5Yy6IEAg5reH5aWlNw==:q75.awebp?policy=eyJ2bSI6MywidWlkIjoiMzkyODk2ODU4MTM1MDU1NSJ9&rk3s=f64ab15b&x-orig-authkey=f32326d3454f2ac7e96d3d06cdbb035152127018&x-orig-expires=1780727190&x-orig-sign=b0ngT%2FJSqlkwda%2BSUcdJYggU5QY%3D)
+
+## 简单理解 Runnable 接口
+
+LangChain 中的绝大多数核心组件都继承了 Runnable 抽象基类（位于 langchain_core.runnables.base）。
+代码：
+
+``chain = prompt | model``
+
+chain变量是RunnableSequence （RunnableSerializable子类） 类型
+
+而得到这个类型的原因就是Runnable基类内部对__or__魔术方法的改写。
+
+同时，在后面继续使用「添加新的组件，依旧会得到RunnableSequence，这就是链的基础架构.
+
+## StrOutputParser 字符串输出解析器
+
+StrOutputParser是LangChain内置的简单字符串解析器
+- 可以将AIMessage解析为简单的字符串，符合了模型invoke方法要求（可传入字符串，不接收
+AIMessage类型）
+- 是Runnable接口的子类（可以加入链）
+
+```Python
+chain = prompt | model | model
+```
+
+会报错,错误的主要原因是:
+- prompt的结果是PromptValue类型，输入给了model
+- modeL的输出结果是AIMessage
+
+所以需要做类型转换,可以借助LangChain 内置的解析器
+
+```Python
+parser = StroutputParser()
+chain = prompt | model 丨 parser 丨 model
+```
+
+## JsonOutputParser&多模型执行链
+
+在前面我们完成了这样的需求去构建多模型链，不过这种做法并不标准，因为：
+
+上一个模型的输出，没有被处理就输入下一个模型。
+
+正常情况下我们应该有如下处理逻辑：
+
+
+![image.png](https://p0-xtjj-private.juejin.cn/tos-cn-i-73owjymdk6/e90a113775834c13a15a9061ad06bf35~tplv-73owjymdk6-jj-mark-v1:0:0:0:0:5o6Y6YeR5oqA5pyv56S-5Yy6IEAg5reH5aWlNw==:q75.awebp?policy=eyJ2bSI6MywidWlkIjoiMzkyODk2ODU4MTM1MDU1NSJ9&rk3s=f64ab15b&x-orig-authkey=f32326d3454f2ac7e96d3d06cdbb035152127018&x-orig-expires=1780727190&x-orig-sign=hD2AJrsB2O6hPtg1j0G2J6m1tWE%3D)
+
+
+我们要把 AIMessage 对象转化为dict 对象，StrOutputParser就不能使用了，这时候就要用到  JsonOutputParser
+
+```Python
+from langchain_core.output_parsers import JsonOutputParser
+from langchain_deepseek.chat_models import ChatDeepSeek
+from langchain_core.prompts import PromptTemplate
+
+json_paser = JsonOutputParser()
+
+model = ChatDeepSeek(model="deepseek-v4-flash")
+
+first_prompt = PromptTemplate.from_template(
+    "我邻居姓：{lastname}，刚生了{gender}，请帮忙起名字，并封装为 JSON 格式。要求key是name,value是你你起的名字"
+)
+second_prompt = PromptTemplate.from_template(
+    "姓名：{name}，请帮我解析含义。"
+)
+
+chain = first_prompt | model | json_paser | second_prompt | model
+
+for chunk in chain.stream({"lastname": "王", "gender": "男"}):
+    print(chunk.content, end="", flush=True)
+```
+
+## 自定义函数加入链
+
+前文我们根据JsonoutputParser完成了多模型执行链条的构建。
+
+除了JsonOutputParser这类固定功能的解析器之外我们也可以自己编写Lambda匿名函数来完成自定义逻辑的数据转换，想怎么转换就怎么转换，更自由。
+
+想要完成这个功能，可以基于RunnableLambda类实现。
+
+RunnableLambda类是LangChain内置的，将普通函数等转换为Runnable接口实例，方便自定义函数加入chain。
+语法:
+
+``RunnabLeLambda(函数对象或Lambda匿名函数)``
+
+```Python
+from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
+from langchain_core.runnables import  RunnableLambda
+from langchain_deepseek.chat_models import ChatDeepSeek
+from langchain_core.prompts import PromptTemplate
+
+json_paser = JsonOutputParser()
+
+model = ChatDeepSeek(model="deepseek-v4-flash")
+
+str_parser = StrOutputParser()
+
+first_prompt = PromptTemplate.from_template(
+    "我邻居姓：{lastname}，刚生了{gender}，请帮忙起名字，并封装为 JSON 格式。要求仅输出姓名,不要其他内容"
+)
+second_prompt = PromptTemplate.from_template(
+    "姓名：{name}，请帮我解析含义。"
+)
+
+my_func = RunnableLambda(lambda ai_msg : {"name": ai_msg.content})
+
+chain = first_prompt | model | my_func | second_prompt | model | str_parser
+
+for chunk in chain.stream({"lastname": "王", "gender": "男"}):
+    print(chunk, end="", flush=True)
+```
+
+## Memory 临时会话记忆
+
+如果想要封装历史记录，除了自行维护历史消息外，也可以借助LangChain内置的历史记录附加功能。
+
+LangChain提供了History功能，帮助模型在有历史记忆的情况下回答。
+
+- 基于RunnableWithMessageHistory在原有链的基础上创建带有历史记录功能的新链（新Runnable实例）
+- 基于InMemoryChatMessageHistory为历史记录提供内存存储（临时用）
+
+```Python
+from langchain_core.chat_history import InMemoryChatMessageHistory
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnableWithMessageHistory
+from langchain_deepseek import ChatDeepSeek
+
+model = ChatDeepSeek(model="deepseek-v4-flash")
+prompt = PromptTemplate.from_template(
+    "你需要根据会话历史回应用户问题。对话历史：{chat_history}，用户提问：{input}，请回答"
+)
+
+str_parser = StrOutputParser()
+
+base_chain = prompt | model | str_parser
+
+store = {}
+# 实现通过会话 id 获取 InMemoryChatMessageHistory 类对象
+def get_history(session_id):
+    if session_id not in store:
+        store[session_id] = InMemoryChatMessageHistory()
+
+    return store[session_id]
+
+# 创建一个新的链,对原有的链增强功能:自动附加历史消息
+
+conversion_chain = RunnableWithMessageHistory(
+    base_chain,     # 原有链
+    get_history,    # 通过会话id获取历史消息
+    input_messages_key="input",     #表示用户输入在模板中的占位符
+    history_messages_key="chat_history"
+)
+
+if __name__ == '__main__':
+    session_config = {
+        "configurable": {
+            "session_id": "user_001"
+        }
+    }
+
+    res = conversion_chain.invoke({"input": "这里有一只猫"}, session_config)
+    print("第1次执行:", res )
+
+    res = conversion_chain.invoke({"input": "这里有两只狗"}, session_config)
+    print("第2次执行:", res)
+
+    res = conversion_chain.invoke({"input": "这里有多少个宠物"}, session_config)
+    print("第3次执行:", res)
+```
+## Memory 长期会话
+
+使用InMemoryChatMessageHistory仅可以在内存中临时存储会话记忆，一旦程序退出，则记忆丢失。
+InMemoryChatMessageHistory 类继承自 BaseChatMessageHistory
+
+我们可以自行实现一个基于Json格式和本地文件的会话数据保存
+
+FileChatMessageHistory类实现，核心思路:
+- 基于文件存储会话记录，以session_id为文件名，不同session_id有不同文件存储消息
+
+
+继承BaseChatMessageHistory实现如下3个方法:
+- add_messages:同步模式，添加消息
+- messages:同步模式，获取消息
+- clear：同步模式，清除消息
+
+```Python
+import os, json
+from typing import Sequence
+
+from langchain_core.chat_history import BaseChatMessageHistory
+from langchain_core.messages import message_to_dict, messages_from_dict, BaseMessage
+from langchain_core.chat_history import InMemoryChatMessageHistory
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnableWithMessageHistory
+from langchain_deepseek import ChatDeepSeek
+
+
+# message_to_dict: 将message对象转换为字典
+# message_from_dict: 将字典转换为message对象
+
+class FileChatMessageHistory(BaseChatMessageHistory):
+    def __init__(self,session_id, storage_path):
+        self.session_id = session_id    # 会话id
+        self.storage_path = storage_path    # 不同会话id的存储文件路径
+        self.file_path = os.path.join(self.storage_path, session_id)
+
+        os.makedirs(os.path.dirname(self.file_path), exist_ok=True)
+
+    def add_messages(self, messages: Sequence[BaseMessage]) -> None:
+        all_messages = list(self.messages)      # 已有的消息列表
+        all_messages.extend(messages)            # 新的和已有的融合成一个list
+
+        # 将数据同步写入本地文件
+        # 类对象写入文件 -> 一堆二进制
+        # 为了方便, 可以将BaseMessage消息转换为字典(借助JSON模块以json字符串写入文件)
+        new_messages = []
+        for message in all_messages:
+            d = message_to_dict(message)
+            new_messages.append(d)
+        # 将数据写入文件
+        with open(self.file_path, "w", encoding="utf-8") as f:
+            json.dump(new_messages, f)
+
+    @property #@property 装饰器将message方法变成成员属性用
+    def messages(self) -> list[BaseMessage]:
+        try:
+            with open(self.file_path, "r", encoding="utf-8") as f:
+                messages_data = json.load(f)    # 返回值就是:list[字典]
+                return messages_from_dict(messages_data)
+
+        except FileNotFoundError:
+            return []
+
+    def clear(self) -> None:
+        with open(self.file_path, "w", encoding="utf-8") as f:
+            json.dump([], f)
+
+
+
+
+model = ChatDeepSeek(model="deepseek-v4-flash")
+prompt = PromptTemplate.from_template(
+    "你需要根据会话历史回应用户问题。对话历史：{chat_history}，用户提问：{input}，请回答"
+)
+
+str_parser = StrOutputParser()
+
+base_chain = prompt | model | str_parser
+
+store = {}
+# 实现通过会话 id 获取 InMemoryChatMessageHistory 类对象
+def get_history(session_id):
+    return FileChatMessageHistory(session_id, "./chat_history")
+
+
+# 创建一个新的链,对原有的链增强功能:自动附加历史消息
+
+conversion_chain = RunnableWithMessageHistory(
+    base_chain,     # 原有链
+    get_history,    # 通过会话id获取历史消息
+    input_messages_key="input",     #表示用户输入在模板中的占位符
+    history_messages_key="chat_history"
+)
+
+if __name__ == '__main__':
+    session_config = {
+        "configurable": {
+            "session_id": "user_001"
+        }
+    }
+
+    # res = conversion_chain.invoke({"input": "这里有一只猫"}, session_config)
+    # print("第1次执行:", res )
+    #
+    # res = conversion_chain.invoke({"input": "这里有两只狗"}, session_config)
+    # print("第2次执行:", res)
+
+    res = conversion_chain.invoke({"input": "这里有多少个宠物"}, session_config)
+    print("第3次执行:", res)
+```
+
+## CSVLoader 的使用
+
+```Python
+from langchain_community.document_loaders import CSVLoader
+
+loader = CSVLoader(
+    file_path="./data/stu.csv",
+    csv_args={
+        "delimiter": ",",    # 指定分隔符
+        "quotechar": '"',    # 指定带有分隔符文本的引号包围是单引号还是双引号
+        # 如果数据有表头,就不要下方代码
+        "fieldnames": ['a','b','c','d']
+    },
+    encoding="utf-8"
+)
+
+documents = loader.load()
+
+print(documents)
+
+# 懒加载
+for document in loader.lazy_load():
+    print(document)
+```
+
+## JSONLoader
+
+JSONLoader用于将JSON数据加载为Document类型对象。
+使用JSONLoader需要额外安装：pip install jq
+
+
+![image.png](https://p0-xtjj-private.juejin.cn/tos-cn-i-73owjymdk6/83985c16df9b41338e78d5ec5db18b4e~tplv-73owjymdk6-jj-mark-v1:0:0:0:0:5o6Y6YeR5oqA5pyv56S-5Yy6IEAg5reH5aWlNw==:q75.awebp?policy=eyJ2bSI6MywidWlkIjoiMzkyODk2ODU4MTM1MDU1NSJ9&rk3s=e9ecf3d6&x-orig-authkey=f32326d3454f2ac7e96d3d06cdbb035152127018&x-orig-expires=1780218529&x-orig-sign=rt9mPoFC10RAbWO5%2FEEvw4YT9AI%3D)
+
+```Python
+from langchain_community.document_loaders import JSONLoader
+loader = JSONLoader(
+    file_path="./data/stu_json_lines.json",
+    jq_schema=".name",
+    text_content=False,
+    json_lines=True
+)
+
+document =  loader.load()
+print(document)
+```
+
+```JSON
+{"name": "周杰伦", "age": 11, "gender": "男"}
+{"name": "蔡依林", "age": 12, "gender": "女"}
+{"name": "王力鸿", "age": 11, "gender": "男"}
+```
